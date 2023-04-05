@@ -49,4 +49,39 @@ async function listenForIceblkTransfers() {
   stream.on('data', async (block) => {
     for (const tx of block.transactions) {
       for (const op of tx.operations) {
-        if (op[0] === 'transfer' && op[
+        if (op[0] === 'transfer' && op[1] === 'icebrk' && op[2] === 'ICEBLK') {
+const memo = op[3];
+const amount = op[1].split(' ')[0];
+const sender = op[1].split(' ')[1];
+      // Check if 72 hours have passed since melt time
+      const now = new Date();
+      const memoData = memo.split(',');
+      const redeemValue = memoData[0];
+      const meltTime = new Date(parseInt(memoData[1]));
+      meltTime.setHours(meltTime.getHours() + 72);
+      if (now < meltTime) {
+        console.log('Melt time has not been met yet');
+        continue;
+      }
+
+      // Transfer BRK tokens to sender
+      try {
+        const result = await tribaldex.buyToken({
+          symbol: 'BRK',
+          amount: redeemValue,
+          price: 0,
+        }, amount / 2);
+        console.log(`Bought ${result.received} BRK for ${result.paid} SWAP.HIVE`);
+        const transferResult = await client.broadcast.transfer({
+          to: sender,
+          amount: `${redeemValue} BRK`,
+          memo: `Redeemed ${redeemValue} BRK for ICEBLK after 72 hours`,
+        }, privateKey);
+        console.log(`Transferred ${redeemValue} BRK to ${sender}`);
+      } catch (error) {
+        console.error(`Error transferring BRK to ${sender}: ${error}`);
+      }
+    }
+  }
+}
+
