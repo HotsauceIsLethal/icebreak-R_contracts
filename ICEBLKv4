@@ -1,0 +1,52 @@
+const hive = require('@hiveio/dhive');
+const client = new hive.Client(process.env.NODE_URL, {chainId: process.env.CHAIN_ID});
+const tribaldexAccount = 'your-tribaldex-account'; // Replace with your Tribaldex account
+const tribaldexPrivateKey = 'your-tribaldex-private-key'; // Replace with your Tribaldex private key
+const icebrkAccount = 'your-icebrk-account'; // Replace with your ICEBRK account
+const icebrkPrivateKey = 'your-icebrk-private-key'; // Replace with your ICEBRK private key
+const iceblkToken = 'ICEBLK'; // The symbol of the ICEBLK token
+const brkToken = 'BRK'; // The symbol of the BRK token
+const brkValuePerIceblk = 100; // The BRK value of 1 ICEBLK token
+
+async function marketBuyBrk(swapHiveAmount) {
+  const brkPair = 'BRKSWAP.HIVE'; // The trading pair of BRK and SWAP.HIVE on Tribaldex
+  const dexClient = new hive.Client('https://api.tribaldex.com', {chainId: process.env.CHAIN_ID});
+  const market = await dexClient.call('market_history_api', 'get_ticker', [brkPair]);
+  const brkPrice = market.latest;
+  const brkAmount = (swapHiveAmount / 2) / brkPrice;
+  const buyOrder = {
+    amount_to_sell: `${swapHiveAmount.toFixed(3)} SWAP.HIVE`,
+    min_to_receive: `${brkAmount.toFixed(3)} ${brkToken}`,
+    fill_or_kill: false,
+    expiration: new Date(Date.now() + 600000).toISOString().slice(0, -5), // 10 minutes
+    referrer: tribaldexAccount
+  };
+  const privateKey = hive.PrivateKey.fromString(tribaldexPrivateKey);
+  await dexClient.broadcast.limitOrderCreate(buyOrder, privateKey);
+}
+
+async function checkAndRedeemIceblkTransfer(from, memo) {
+  const memoParts = memo.split(' ');
+  if (memoParts.length === 2 && memoParts[1] === 'ICEBLK') {
+    const redeemValue = Number(memoParts[0]);
+    const transfer = await client.call('condenser_api', 'get_transfer', [from, icebrkAccount, '0.001 HIVE']);
+    if (transfer && transfer.memo === memo) {
+      const transferTimestamp = Date.parse(transfer.timestamp + 'Z');
+      const meltTime = transferTimestamp + (72 * 60 * 60 * 1000); // 72 hours in milliseconds
+      const currentTime = Date.now();
+      if (currentTime >= meltTime) {
+        const brkAmount = redeemValue / brkValuePerIceblk;
+        const memo = `${redeemValue} BRK ${meltTime}`;
+        const privateKey = hive.PrivateKey.fromString(icebrkPrivateKey);
+        await client.broadcast.transfer(icebrkAccount, from, `${brkAmount.toFixed(3)} ${brkToken}`, memo, privateKey);
+      }
+    }
+  }
+}
+
+async function listenForIceblkTransfers() {
+  const stream = client.blockchain.getBlockStream();
+  stream.on('data', async (block) => {
+    for (const tx of block.transactions) {
+      for (const op of tx.operations) {
+        if (op[0] === 'transfer' && op[
