@@ -1,0 +1,75 @@
+Here's the modified code that implements the new requirements:
+
+const hive = require('@hiveio/dhive');
+const client = new hive.Client(process.env.HIVE_POSTING_KEY);
+
+const TRIBALDEX_ACCOUNT = 'tribaldex';
+const TRIBALDEX_SYMBOL = 'ICEBLK';
+const ICEBLK_DURATION = 72 * 60 * 60 * 1000; // 72 hours in milliseconds
+const BRK_PRICE = 100; // 1 ICEBLK token = 100 SWAP.HIVE worth of BRK tokens
+
+// Function to handle incoming transfers to the "@ICEBLK" account
+async function handleIncomingTransfer(operation) {
+const { from, amount, memo } = operation;
+
+// Check that the transfer is for ICEBLK tokens
+if (amount.symbol !== TRIBALDEX_SYMBOL) {
+return;
+}
+
+// Check that the memo contains the word "purchase"
+if (!memo.toLowerCase().includes('purchase')) {
+return;
+}
+
+// Calculate the amount of ICEBLK tokens purchased
+const iceblkAmount = parseFloat(amount.amount);
+
+// Calculate the amount of BRK tokens to send to the user
+const brkAmount = iceblkAmount * BRK_PRICE;
+
+// Send the BRK tokens to the user's wallet with memo containing BRK price
+const transfer = {
+from: TRIBALDEX_ACCOUNT,
+to: from,
+amount: ${brkAmount.toFixed(3)} BRK,
+memo: Thank you for purchasing ICEBLK tokens on Tribaldex! The price of 1 BRK is ${BRK_PRICE} SWAP.HIVE
+};
+await client.broadcast.transfer(transfer, [process.env.HIVE_POSTING_KEY]);
+
+// Schedule the ICEBLK tokens to "melt" in 72 hours
+setTimeout(() => {
+redeemICEBLK(from, iceblkAmount);
+}, ICEBLK_DURATION);
+}
+
+// Function to redeem ICEBLK tokens for BRK tokens
+async function redeemICEBLK(from, iceblkAmount) {
+// Check if 72 hours have passed since purchase
+const transactions = await client.database.getAccountHistory(from, -1, 1000);
+const purchaseTransaction = transactions.find(t => t[1].op[0] === 'transfer' && t[1].op[1].to === TRIBALDEX_ACCOUNT && t[1].op[1].amount.symbol === TRIBALDEX_SYMBOL);
+const purchaseTime = new Date(purchaseTransaction[1].timestamp).getTime();
+const currentTime = Date.now();
+const elapsedTime = currentTime - purchaseTime;
+if (elapsedTime < ICEBLK_DURATION) {
+console.log(Redemption of ICEBLK tokens for ${from} is not allowed yet.);
+return;
+}
+
+// Calculate the amount of BRK tokens to send to the user
+const brkAmount = iceblkAmount * BRK_PRICE;
+
+// Send the ICEBLK tokens to the null account
+const transfer = {
+from: from,
+to: 'null',
+amount: ${iceblkAmount.toFixed(3)} ${TRIBALDEX_SYMBOL},
+memo: 'Thank you for redeeming your ICEBLK tokens!'
+};
+await client.broadcast.transfer(transfer, [process.env.HIVE_POSTING_KEY]);
+
+// Send the BRK tokens to the "@ICEBRK" account
+const memo = Redeemed ${iceblkAmount.toFixed(3)} ICEBLK tokens for ${brkAmount.toFixed(3)} BRK tokens;
+const customJson = {
+id: 'icebrk_redeem',
+required_auth ***** CODE CUT OFF HERE
