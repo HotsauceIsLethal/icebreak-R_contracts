@@ -1,0 +1,13 @@
+This code appears to be implementing a simple DeFi application for exchanging SWAP.HIVE for ICEBLK tokens, which can then be "melted" after 72 hours for BRK tokens. The application also includes a function to buy back and burn BRK tokens using DeFi revenues.
+
+The BRK_PRICE constant represents the exchange rate between ICEBLK and BRK tokens. In this case, 1 ICEBLK token is worth 100 SWAP.HIVE worth of BRK tokens.
+
+The ICEBLK_DURATION constant represents the amount of time in milliseconds that ICEBLK tokens can be held before they can be "melted" for BRK tokens. In this case, the duration is 72 hours.
+
+The purchaseICEBLK function allows users to purchase ICEBLK tokens with SWAP.HIVE. It calls the placeLimitOrder function from the tribaldex object to place a limit order for ICEBLK tokens. Once the order is filled, the function adds the purchased ICEBLK tokens to the user's wallet and schedules a call to the redeemICEBLK function after 72 hours.
+
+The redeemICEBLK function allows users to redeem ICEBLK tokens for BRK tokens after the 72-hour duration. It first checks that the user has enough ICEBLK tokens to redeem, then removes the redeemed ICEBLK tokens from the user's wallet. The function then calculates the amount of BRK tokens to send to the user based on the BRK_PRICE constant and sends them to the user's wallet using the sendTokens function.
+
+The burnBRK function buys back and burns BRK tokens using DeFi revenues. It first calls the getDefiRevenues function to retrieve the DeFi revenues, then calculates the amount of BRK tokens to buy back and burn based on the BRK_PRICE constant. The function then sends the BRK tokens to the null account to burn them.
+
+Note that several functions called in this code are not defined, such as tribaldex.placeLimitOrder, getUser, updateUser, sendTokens, and getDefiRevenues. These functions are likely defined elsewhere in the code or in external libraries.
