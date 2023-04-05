@@ -1,0 +1,77 @@
+// Import necessary libraries
+const hive = require('hive-js');
+const tribaldex = require('tribaldex-api');
+
+// Set the contract account and token symbols
+const contractAccount = 'icebrk';
+const iceblkSymbol = 'ICEBLK';
+const brkSymbol = 'BRK';
+
+// Set the Tribaldex pool ID for the BRK token
+const brkPoolId = 'BRK-SWAP.HIVE';
+
+// Listen for any custom JSON transactions related to the ICEBLK token and the contract account
+hive.api.streamTransactions({ accounts: [contractAccount] }, async (err, transaction) => {
+  if (err) {
+    console.error(err);
+    return;
+  }
+
+  // Check if the transaction is a custom JSON operation
+  const op = transaction.operations[0];
+  if (op[0] !== 'custom_json') {
+    return;
+  }
+
+  // Parse the custom JSON operation
+  const customJson = JSON.parse(op[1].json);
+
+  // Check if the custom JSON operation is related to the ICEBLK token
+  if (customJson.contractName !== iceblkSymbol) {
+    return;
+  }
+
+  // Check if the custom JSON operation is a sell order
+  if (customJson.action !== 'sell') {
+    return;
+  }
+
+  // Calculate the amount of SWAP.HIVE received from the sale
+  const swapHiveReceived = parseFloat(customJson.price) * parseFloat(customJson.quantity);
+
+  // Calculate the amount of BRK tokens to buy with half of the SWAP.HIVE received from the sale
+  const brkAmount = await tribaldex.getMarketBuyAmountsOut(swapHiveReceived / 2, 'SWAP.HIVE', brkSymbol, brkPoolId);
+
+  // Calculate the RedeemValue as the amount of BRK tokens purchased multiplied by 2
+  const redeemValue = brkAmount * 2;
+
+  // Calculate the "Melt Time" as the timestamp of the ICEBLK sale plus 72 hours
+  const meltTime = new Date(transaction.timestamp + 72 * 60 * 60 * 1000);
+
+  // Send a transfer of 0.001 SWAP.HIVE to the user who bought the ICEBLK token/s with a memo that includes the RedeemValue and the "Melt Time"
+  const memo = `RedeemValue: ${redeemValue}, Melt Time: ${meltTime}`;
+  await hive.broadcast.transferAsync(contractAccount, customJson.account, '0.001', 'SWAP.HIVE', memo);
+
+  // Listen for incoming transfers of ICEBLK tokens to the contract account
+  hive.api.streamOperations({ account: contractAccount, type: 'transfer' }, async (err, operation) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+
+    // Check if the transfer is related to the ICEBLK token
+    if (operation[1].symbol !== iceblkSymbol) {
+      return;
+    }
+
+    // Parse the memo of the transfer to get the RedeemValue and "Melt Time"
+    const transferMemo = operation[1].memo;
+    const redeemValueMatch = transferMemo.match(/RedeemValue: ([0-9\.]+)/);
+    const meltTimeMatch = transferMemo.match(/Melt Time: (.+)/);
+
+    if (!redeemValueMatch || !meltTimeMatch) {
+      return;
+    }
+
+    // Check if 72 hours has elapsed since the "Melt Time"
+    const meltTime = new Date(meltTimeMatch[1
