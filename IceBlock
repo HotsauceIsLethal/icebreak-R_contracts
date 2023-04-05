@@ -1,0 +1,49 @@
+const BRK_PRICE = 1; // 1 ICEBLK token = 100 SWAP.HIVE worth of BRK tokens
+const ICEBLK_DURATION = 72 * 60 * 60 * 1000; // 72 hours in milliseconds
+
+// Function to purchase ICEBLK tokens with SWAP.HIVE
+async function purchaseICEBLK(swapHiveAmount) {
+  // Call the Tribaldex exchange to place a limit order for ICEBLK tokens
+  const order = await tribaldex.placeLimitOrder('ICEBLK-SWAP.HIVE', swapHiveAmount);
+  const iceblkAmount = order.filledAmount;
+  
+  // Add the purchased ICEBLK tokens to the user's wallet
+  const user = await getUser();
+  user.iceblkBalance += iceblkAmount;
+  await updateUser(user);
+  
+  // Schedule the ICEBLK tokens to "melt" in 72 hours
+  setTimeout(() => {
+    redeemICEBLK(iceblkAmount);
+  }, ICEBLK_DURATION);
+}
+
+// Function to redeem ICEBLK tokens for BRK tokens
+async function redeemICEBLK(iceblkAmount) {
+  const user = await getUser();
+  
+  // Check that the user has enough ICEBLK tokens to redeem
+  if (user.iceblkBalance < iceblkAmount) {
+    throw new Error('Insufficient ICEBLK balance');
+  }
+  
+  // Remove the redeemed ICEBLK tokens from the user's wallet
+  user.iceblkBalance -= iceblkAmount;
+  await updateUser(user);
+  
+  // Calculate the amount of BRK tokens to send to the user
+  const brkAmount = iceblkAmount * BRK_PRICE;
+  
+  // Send the BRK tokens to the user's wallet
+  await sendTokens('BRK', brkAmount, user.walletAddress);
+}
+
+// Function to buy back and burn BRK tokens using DeFi revenues
+async function burnBRK() {
+  // Get the DeFi revenues and calculate the amount of BRK tokens to buy back and burn
+  const defiRevenues = await getDefiRevenues();
+  const brkAmount = defiRevenues / 2 / BRK_PRICE;
+  
+  // Burn the BRK tokens by sending them to the null account
+  await sendTokens('BRK', brkAmount, 'null');
+}
